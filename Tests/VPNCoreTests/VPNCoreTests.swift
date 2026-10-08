@@ -111,6 +111,32 @@ final class VPNCoreTests {
         }
         expectLessThan(Date().timeIntervalSince(start), 3)
     }
+
+    func testExitedProcessDoesNotWaitForInheritedPipes() async throws {
+        let start = Date()
+        let result = try await CommandRunner().run(URL(fileURLWithPath: "/bin/sh"),
+            arguments: ["-c", "printf done; sleep 2 &"], timeout: 5)
+        expectEqual(result.output, "done")
+        expectEqual(result.exitCode, 0)
+        expectLessThan(Date().timeIntervalSince(start), 1)
+    }
+
+    func testOversizedOutputIsRejected() async {
+        do {
+            _ = try await CommandRunner().run(URL(fileURLWithPath: "/usr/bin/seq"), arguments: ["1", "100000"], timeout: 5)
+            fail("Expected an output limit error")
+        } catch { expectEqual(error as? CommandError, .outputTooLarge) }
+    }
+
+    func testTimeoutKillsProcessIgnoringTermination() async {
+        let start = Date()
+        do {
+            _ = try await CommandRunner().run(URL(fileURLWithPath: "/bin/sh"),
+                arguments: ["-c", "trap '' TERM; exec sleep 10"], timeout: 0.1)
+            fail("Expected timeout")
+        } catch { expectEqual(error as? CommandError, .timedOut) }
+        expectLessThan(Date().timeIntervalSince(start), 3)
+    }
 }
 
 private actor MockRunner: CommandExecuting {
@@ -179,7 +205,10 @@ private struct TestMain {
             ("Tailscale CLI environment", { try await checks.testTailscaleUsesCLIEnvironmentAndNoConfigurationFlags() }),
             ("application alias deduplication", { try checks.testCanonicalPathsDeduplicateAliases() }),
             ("pipe draining", { try await checks.testRealRunnerDrainsLargeOutputWithoutDeadlock() }),
-            ("process timeout", { await checks.testRealRunnerTimeoutTerminatesProcess() })
+            ("process timeout", { await checks.testRealRunnerTimeoutTerminatesProcess() }),
+            ("inherited pipe lifetime", { try await checks.testExitedProcessDoesNotWaitForInheritedPipes() }),
+            ("output size limit", { await checks.testOversizedOutputIsRejected() }),
+            ("forced timeout termination", { await checks.testTimeoutKillsProcessIgnoringTermination() })
         ]
         for (name, test) in cases {
             let before = Assertions.failures.count
