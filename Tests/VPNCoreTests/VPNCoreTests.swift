@@ -110,6 +110,73 @@ final class VPNCoreTests {
         expectEqual(ApplicationPaths.unique([real, alias]).count, 1)
     }
 
+    func testActiveConnectionsUseObservedStates() {
+        let native = Parsers.systemEntry(id: "native", name: "Office", status: .connected)
+        let groups = [
+            VPNGroup(provider: .tailscale, applicationURL: nil, status: .connected,
+                     entries: [VPNEntry(id: "tailscale", name: "Tailscale", status: .connected, actions: [.disconnect, .openClient])]),
+            VPNGroup(provider: .cisco, applicationURL: nil, status: .connected,
+                     entries: [VPNEntry(id: "one", name: "One", status: .connected, actions: [.openClient]),
+                               VPNEntry(id: "two", name: "Two", status: .connected, actions: [.openClient])]),
+            VPNGroup(provider: .openVPN, applicationURL: nil, status: .managedInClient, entries: []),
+            VPNGroup(provider: .system, applicationURL: nil, status: .unavailable,
+                     entries: [native, Parsers.systemEntry(id: "transition", name: "Starting", status: .connecting)])
+        ]
+        let active = ActiveConnection.observed(in: groups)
+        expectEqual(active.map(\.name), ["Tailscale", "Cisco Secure Client", "Office"])
+        expectTrue(active.allSatisfy(\.canDisconnect))
+        expectTrue(active[1].entry == nil)
+        expectEqual(active[2].entry?.profileID, "native")
+        expectEqual(active.map(\.openAction), [.openClient, .openClient, .openSettings])
+        for status in [VPNStatus.disconnected, .connecting, .disconnecting, .needsLogin, .unavailable] {
+            let group = VPNGroup(provider: .tailscale, applicationURL: nil, status: status, entries: [])
+            expectTrue(ActiveConnection.observed(in: [group]).isEmpty)
+        }
+    }
+
+    func testStatusOnlyRefreshPreservesProfilesAndAvoidsEnumeration() async {
+        let runner = MockRunner()
+        await runner.set(["status", "--json"], result: .success(CommandResult(output: #"{"BackendState":"Stopped"}"#)))
+        await runner.set(["state"], result: .success(CommandResult(output: ">> state: Connected")))
+        await runner.set(["--nc", "status", "native"], result: .success(CommandResult(output: "Connected")))
+        let openVPN = VPNGroup(provider: .openVPN, applicationURL: nil, status: .managedInClient,
+                               entries: [VPNEntry(id: "ovpn", name: "Profile", status: .managedInClient, actions: [.openClient])])
+        let groups = [openVPN,
+                      VPNGroup(provider: .tailscale, applicationURL: URL(fileURLWithPath: "/missing/Tailscale.app"),
+                               status: .connected, entries: []),
+                      VPNGroup(provider: .cisco, applicationURL: nil, status: .disconnected,
+                               entries: [VPNEntry(id: "cisco", name: "Office", status: .disconnected, actions: [.openClient])]),
+                      VPNGroup(provider: .system, applicationURL: nil, status: .unavailable,
+                               entries: [Parsers.systemEntry(id: "native", name: "Home", status: .disconnected)])]
+        let refreshed = await VPNDiscovery(runner: runner).refreshStatuses(groups)
+        expectEqual(refreshed.map(\.provider), groups.map(\.provider))
+        expectEqual(refreshed[0].entries, openVPN.entries)
+        expectEqual(refreshed[1].status, .disconnected)
+        expectEqual(refreshed[1].entries.first?.actions, [.connect, .openClient])
+        expectEqual(refreshed[2].entries.first?.name, "Office")
+        expectEqual(refreshed[2].status, .connected)
+        expectEqual(refreshed[3].entries.first?.actions, [.disconnect, .openSettings])
+        let calls = await runner.calls
+        expectEqual(calls.count, 3)
+        expectTrue(calls.allSatisfy { $0.timeout == 5 })
+        expectFalse(calls.contains { $0.arguments.contains("hosts") || $0.arguments.contains("--list-profiles") || $0.arguments.contains("list") })
+    }
+
+    func testStatusReadFailuresClearConnectedIndicator() async {
+        let groups = [
+            VPNGroup(provider: .tailscale, applicationURL: URL(fileURLWithPath: "/missing/Tailscale.app"), status: .connected, entries: []),
+            VPNGroup(provider: .cisco, applicationURL: nil, status: .connected, entries: []),
+            VPNGroup(provider: .system, applicationURL: nil, status: .unavailable,
+                     entries: [Parsers.systemEntry(id: "native", name: "Office", status: .connected)])
+        ]
+        expectEqual(ActiveConnection.observed(in: groups).count, 3)
+        let refreshed = await VPNDiscovery(runner: MockRunner()).refreshStatuses(groups)
+        expectTrue(ActiveConnection.observed(in: refreshed).isEmpty)
+        expectEqual(refreshed[0].status, .unavailable)
+        expectEqual(refreshed[1].status, .unavailable)
+        expectEqual(refreshed[2].entries.first?.status, .unavailable)
+    }
+
     func testRealRunnerDrainsLargeOutputWithoutDeadlock() async throws {
         let result = try await CommandRunner().run(URL(fileURLWithPath: "/usr/bin/seq"), arguments: ["1", "20000"], timeout: 5)
         expectEqual(result.exitCode, 0)
@@ -220,6 +287,9 @@ private struct TestMain {
             ("native authentication handoff", { await checks.testNativeConnectDoesNotStartWithoutSystemAuthentication() }),
             ("Tailscale CLI environment", { try await checks.testTailscaleUsesCLIEnvironmentAndNoConfigurationFlags() }),
             ("application alias deduplication", { try checks.testCanonicalPathsDeduplicateAliases() }),
+            ("active connection shortcuts", { checks.testActiveConnectionsUseObservedStates() }),
+            ("status-only polling", { await checks.testStatusOnlyRefreshPreservesProfilesAndAvoidsEnumeration() }),
+            ("failed status clears indicator", { await checks.testStatusReadFailuresClearConnectedIndicator() }),
             ("pipe draining", { try await checks.testRealRunnerDrainsLargeOutputWithoutDeadlock() }),
             ("process timeout", { await checks.testRealRunnerTimeoutTerminatesProcess() }),
             ("inherited pipe lifetime", { try await checks.testExitedProcessDoesNotWaitForInheritedPipes() }),

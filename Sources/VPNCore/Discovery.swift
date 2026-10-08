@@ -15,6 +15,38 @@ public final class VPNDiscovery {
         return await [tailscale, cisco, openVPN, system].compactMap { $0 }
     }
 
+    /// Refresh known sources without enumerating profiles or invoking OpenVPN.
+    public func refreshStatuses(_ groups: [VPNGroup]) async -> [VPNGroup] {
+        await withTaskGroup(of: (Int, VPNGroup).self, returning: [VPNGroup].self) { tasks in
+            for (index, group) in groups.enumerated() {
+                tasks.addTask { (index, await self.refreshStatus(group)) }
+            }
+            var results: [(Int, VPNGroup)] = []
+            for await result in tasks { results.append(result) }
+            return results.sorted { $0.0 < $1.0 }.map { $0.1 }
+        }
+    }
+
+    private func refreshStatus(_ group: VPNGroup) async -> VPNGroup {
+        switch group.provider {
+        case .tailscale:
+            return await tailscale(group.applicationURL) ?? group
+        case .cisco:
+            let status = await ciscoState()
+            let entries = group.entries.map {
+                VPNEntry(id: $0.id, name: $0.name, profileID: $0.profileID, status: status, actions: $0.actions)
+            }
+            return VPNGroup(provider: .cisco, applicationURL: group.applicationURL, status: status,
+                            entries: entries, issue: status == .unavailable
+                            ? "Could not read Cisco status. Open the client to continue." : group.issue)
+        case .system:
+            return VPNGroup(provider: .system, applicationURL: nil, status: group.status,
+                            entries: await systemEntries(group.entries), issue: group.issue)
+        case .openVPN:
+            return group
+        }
+    }
+
     public static func executable(in application: URL, fallback: String) -> URL {
         Bundle(url: application)?.executableURL ?? application.appendingPathComponent("Contents/MacOS/\(fallback)")
     }
@@ -83,26 +115,30 @@ public final class VPNDiscovery {
         do {
             let entries = try Parsers.systemServices(await read(Self.scutil, ["--nc", "list"]))
             guard !entries.isEmpty else { return nil }
-            let refreshed = await withTaskGroup(of: VPNEntry.self, returning: [VPNEntry].self) { tasks in
-                for entry in entries {
-                    tasks.addTask {
-                        do {
-                            let text = try await self.read(Self.scutil, ["--nc", "status", entry.profileID!])
-                            return Parsers.systemEntry(id: entry.profileID!, name: entry.name,
-                                                       status: try Parsers.systemState(text))
-                        } catch {
-                            return Parsers.systemEntry(id: entry.profileID!, name: entry.name, status: .unavailable)
-                        }
-                    }
-                }
-                var results: [VPNEntry] = []
-                for await entry in tasks { results.append(entry) }
-                return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-            }
-            return VPNGroup(provider: .system, applicationURL: nil, status: .unavailable, entries: refreshed)
+            return VPNGroup(provider: .system, applicationURL: nil, status: .unavailable,
+                            entries: await systemEntries(entries))
         } catch {
             return VPNGroup(provider: .system, applicationURL: nil, status: .unavailable, entries: [],
                             issue: "Could not read system VPNs. Open VPN Settings to continue.")
+        }
+    }
+
+    private func systemEntries(_ entries: [VPNEntry]) async -> [VPNEntry] {
+        await withTaskGroup(of: VPNEntry.self, returning: [VPNEntry].self) { tasks in
+            for entry in entries {
+                tasks.addTask {
+                    do {
+                        let text = try await self.read(Self.scutil, ["--nc", "status", entry.profileID!])
+                        return Parsers.systemEntry(id: entry.profileID!, name: entry.name,
+                                                   status: try Parsers.systemState(text))
+                    } catch {
+                        return Parsers.systemEntry(id: entry.profileID!, name: entry.name, status: .unavailable)
+                    }
+                }
+            }
+            var results: [VPNEntry] = []
+            for await entry in tasks { results.append(entry) }
+            return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         }
     }
 }

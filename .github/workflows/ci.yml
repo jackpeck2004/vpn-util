@@ -28,6 +28,8 @@ jobs:
         run: python3 Tests/ReleaseTests/test_release.py -v
       - name: Build and verify local app
         run: bash scripts/build.sh
+      - name: Check synthetic native menus and indicator
+        run: '"dist/VPN Utility.app/Contents/MacOS/VPNUtility" --check-ui'
       - name: Check source whitespace
         run: git diff --check
 

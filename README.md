@@ -2,7 +2,7 @@
 
 A lightweight, native macOS menu bar utility for VPN clients you already have installed. Launch it to discover existing clients and profiles; no onboarding, configuration, or credential import is required.
 
-**Status:** early source preview, version 0.1.1. The source is MIT licensed. Local builds are ad-hoc signed; a stable, notarized public download is not yet available. See [RELEASING.md](RELEASING.md) for the remaining validation gates.
+**Status:** early source preview, version 0.2.0. The source is MIT licensed. Local builds are ad-hoc signed; a stable, notarized public download is not yet available. See [RELEASING.md](RELEASING.md) for the remaining validation gates.
 
 ## Requirements
 
@@ -47,7 +47,22 @@ these states **Connected to tailnet** and **Disconnected from tailnet**. Check
 Tailscale's own menu for login and connection controls; the macOS switch alone
 is not proof of an active tailnet connection.
 
-Discovery runs on launch and whenever the menu opens. It refreshes every five seconds while the menu stays open; there is no idle polling. The neutral icon does not imply an aggregate connection state. The utility never automatically disconnects another VPN or edits existing client settings.
+A green dot appears on the menu bar icon when at least one supported source is
+observed as connected. The menu starts with quick **Disconnect** and **Open**
+actions for each active source, including separate native VPNs. Cisco has one
+client-level shortcut because its CLI does not identify the active profile.
+OpenVPN remains managed in its original client and does not contribute to the
+green dot because its supported CLI cannot report live connection state. An
+unavailable or transitioning state does not count as connected.
+
+Discovery runs on launch, when the menu opens, and on manual Refresh. Known
+connection statuses refresh every 15 seconds while the menu is closed and every
+five seconds while open, with timer tolerance for macOS power coalescing. These
+status-only checks do not enumerate profiles or invoke OpenVPN Connect. Failed
+status reads clear that source's connected indicator. The icon reflects the
+latest observation, so external changes can take one polling interval plus the
+five-second command timeout to appear; it is not a reachability test. The utility
+never automatically disconnects another VPN or edits existing client settings.
 
 ## Configuration and privacy
 
@@ -61,10 +76,11 @@ See [SECURITY.md](SECURITY.md) for the local command execution model and vulnera
 
 ```sh
 bash scripts/test.sh
+"dist/VPN Utility.app/Contents/MacOS/VPNUtility" --check-ui
 "dist/VPN Utility.app/Contents/MacOS/VPNUtility" --diagnose
 ```
 
-The thirteen portable checks cover parsing, duplicate discovery, missing clients, failure isolation, argument handling, output limits, pipe draining, inherited pipes, and timeout termination. They use synthetic fixtures and never connect/disconnect a VPN. A small executable supplies assertions, so testing does not depend on XCTest or Xcode.
+The sixteen portable checks cover parsing, duplicate discovery, missing clients, failure isolation, argument handling, output limits, pipe draining, inherited pipes, and timeout termination. They use synthetic fixtures and never connect/disconnect a VPN. `--check-ui` validates detached AppKit menus, multiple active shortcuts, and badge state using synthetic data only. A small executable supplies assertions, so testing does not depend on XCTest or Xcode.
 
 Diagnostics reads real profiles and status and validates the detached menu structure without activating connection actions. **Its output contains private profile names, hostnames, identifiers, and local paths.** It is not saved by the app; redact it before sharing and never commit raw diagnostic output.
 
@@ -72,12 +88,12 @@ The GitHub Actions workflow runs synthetic checks, ten offline release/cask chec
 
 ## Downloadable GitHub previews
 
-After this source is on GitHub, pushing a version tag such as `v0.1.1` triggers tests and builds a universal Apple Silicon + Intel app. The tag must refer to a commit on `main`, and its numeric version must match `Resources/Info.plist`. The workflow uploads a versioned ZIP and SHA-256 checksum to a GitHub release, then publishes it as a **prerelease**. Find the downloads under the repository's **Releases** page.
+After this source is on GitHub, pushing a version tag such as `v0.2.0` triggers tests and builds a universal Apple Silicon + Intel app. The tag must refer to a commit on `main`, and its numeric version must match `Resources/Info.plist`. The workflow uploads a versioned ZIP and SHA-256 checksum to a GitHub release, then publishes it as a **prerelease**. Find the downloads under the repository's **Releases** page.
 
 ```sh
 # After configuring origin and pushing the branches:
-git tag -a v0.1.1 -m "VPN Utility 0.1.1 preview"
-git push origin v0.1.1
+git tag -a v0.2.0 -m "VPN Utility 0.2.0 preview"
+git push origin v0.2.0
 ```
 
 The preview pipeline needs no personal access token or signing secrets: it uses GitHub Actions' built-in token. Downloads are ad-hoc signed and not notarized, so normal macOS per-app security approval may be necessary. The pipeline does not advertise them as stable or Gatekeeper-ready builds. Failed uploads leave a draft; reruns can resume drafts but do not replace published downloads.
@@ -85,10 +101,10 @@ The preview pipeline needs no personal access token or signing secrets: it uses 
 To produce the same ZIP locally without contacting GitHub:
 
 ```sh
-bash scripts/package-release.sh v0.1.1
+bash scripts/package-release.sh v0.2.0
 ```
 
-The result is `dist/VPN-Utility-v0.1.1-universal.zip` and `dist/SHA256SUMS-v0.1.1.txt`. Extract the ZIP, verify the checksum, and move the app to Applications. The universal build compiles both architectures; runtime compatibility across both still needs manual validation.
+The result is `dist/VPN-Utility-v0.2.0-universal.zip` and `dist/SHA256SUMS-v0.2.0.txt`. Extract the ZIP, verify the checksum, and move the app to Applications. The universal build compiles both architectures; runtime compatibility across both still needs manual validation.
 
 ## Install with Homebrew
 
@@ -146,9 +162,9 @@ preview release pipeline.
 
 ## Validation and release limits
 
-Local validation with Apple's Command Line Tools covered all four installed integrations, detached menu construction, app launch, and code signing. The original build measured approximately 0.6 MB on disk and 24–41 MiB of resident memory, with 0% CPU at idle samples and no idle child processes; these measurements are observations, not performance guarantees.
+Local validation with Apple's Command Line Tools covered all four installed integrations, detached menu construction, app launch, and code signing. Before the 0.2.0 status indicator added periodic status checks, the original build measured approximately 0.6 MB on disk and 24–41 MiB of resident memory, with 0% CPU at idle samples and no idle child processes; these earlier measurements are observations, not performance guarantees.
 
-The subprocess pipe fix was reproduced before the change and all thirteen checks pass afterward. Visual menu behavior, actual client handoffs, live connection changes, and compatibility across macOS versions/architectures remain manual release gates. Do not infer those checks from successful compilation or the deployment target.
+The subprocess pipe fix was reproduced before the change and all sixteen checks pass afterward. Visual menu behavior, actual client handoffs, live connection changes, and compatibility across macOS versions/architectures remain manual release gates. Do not infer those checks from successful compilation or the deployment target.
 
 For an ordinary consumer download, complete the [release checklist](RELEASING.md), Developer ID signing, notarization, and verification on a clean Mac. The build script deliberately does not publish or notarize anything.
 

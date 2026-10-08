@@ -5,6 +5,15 @@ import VPNCore
 struct VPNUtilityMain {
     @MainActor
     static func main() async {
+        if CommandLine.arguments.contains("--check-ui") {
+            NSApplication.shared.setActivationPolicy(.accessory)
+            let controller = MenuController()
+            let problems = controller.validateSyntheticMenus()
+            for problem in problems { fputs("Menu check failed: \(problem)\n", stderr) }
+            if !problems.isEmpty { exit(1) }
+            print("Synthetic active menus and indicator: OK")
+            return
+        }
         if CommandLine.arguments.contains("--diagnose") {
             let groups = await VPNDiscovery().discover(ApplicationLocator().discover())
             NSApplication.shared.setActivationPolicy(.accessory)
@@ -41,13 +50,46 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var busy = Set<String>()
     private var errors: [String: String] = [:]
     private var hasLoaded = false
+    private var discoveryPending = false
+    private let connectionBadge = ConnectionBadge(frame: NSRect(x: 0, y: 0, width: 6, height: 6))
 
     // Builds detached menus only: diagnostic checks never click controls or start VPNs.
+    func validateSyntheticMenus() -> [String] {
+        let groups = [
+            VPNGroup(provider: .tailscale, applicationURL: nil, status: .connected,
+                     entries: [VPNEntry(id: "tailscale", name: "Tailscale", status: .connected, actions: [.disconnect, .openClient])]),
+            VPNGroup(provider: .cisco, applicationURL: nil, status: .connected,
+                     entries: [VPNEntry(id: "one", name: "Office", status: .connected, actions: [.openClient]),
+                               VPNEntry(id: "two", name: "Home", status: .connected, actions: [.openClient])]),
+            VPNGroup(provider: .openVPN, applicationURL: nil, status: .managedInClient, entries: []),
+            VPNGroup(provider: .system, applicationURL: nil, status: .unavailable,
+                     entries: [Parsers.systemEntry(id: "native", name: "Office", status: .connected),
+                               Parsers.systemEntry(id: "other", name: "Home", status: .connected)])
+        ]
+        return [[], groups, [VPNGroup(provider: .tailscale, applicationURL: nil, status: .unavailable, entries: [])]]
+            .flatMap { validateMenu($0) }
+    }
+
     func validateMenu(_ snapshots: [VPNGroup]) -> [String] {
         groups = snapshots
         hasLoaded = true
         render()
         var problems: [String] = []
+        if connectionBadge.isHidden != ActiveConnection.observed(in: snapshots).isEmpty {
+            problems.append("Incorrect connected indicator")
+        }
+        for active in ActiveConnection.observed(in: snapshots) {
+            let expectedActions: [VPNAction] = active.canDisconnect
+                ? [.disconnect, active.openAction] : [active.openAction]
+            for action in expectedActions {
+                let matches = menu.items.filter {
+                    guard let selection = $0.representedObject as? Selection else { return false }
+                    return selection.group.provider == active.group.provider
+                        && selection.entry?.id == active.entry?.id && selection.action == action
+                }
+                if matches.count != 1 { problems.append("Missing or duplicated active VPN shortcut") }
+            }
+        }
         for group in snapshots {
             guard let submenu = menu.items.first(where: { $0.title == group.provider.title })?.submenu else {
                 problems.append("Missing \(group.provider.title) menu")
@@ -89,35 +131,56 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         image?.isTemplate = true
         statusItem.button?.image = image
         statusItem.button?.toolTip = "VPN Utility"
+        if let button = statusItem.button {
+            connectionBadge.frame.origin = NSPoint(x: button.bounds.maxX - 8, y: button.bounds.minY + 1)
+            connectionBadge.autoresizingMask = [.minXMargin, .maxYMargin]
+            connectionBadge.isHidden = true
+            button.addSubview(connectionBadge)
+        }
         menu.delegate = self
         menu.autoenablesItems = false
         statusItem.menu = menu
         render()
-        refresh()
+        refresh(discoverProfiles: true)
+        scheduleRefresh(every: 15)
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        refresh()
+        refresh(discoverProfiles: true)
+        scheduleRefresh(every: 5)
+    }
+
+    private func scheduleRefresh(every interval: TimeInterval) {
         timer?.invalidate()
-        let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
+        timer.tolerance = interval * 0.2
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
 
     func menuDidClose(_ menu: NSMenu) {
-        timer?.invalidate()
-        timer = nil
+        scheduleRefresh(every: 15)
     }
 
-    private func refresh() {
-        guard refreshTask == nil else { return }
+    func applicationWillTerminate(_ notification: Notification) {
+        timer?.invalidate()
+        refreshTask?.cancel()
+    }
+
+    private func refresh(discoverProfiles: Bool = false) {
+        if discoverProfiles { discoveryPending = true }
+        guard refreshTask == nil, busy.isEmpty else { return }
+        let fullDiscovery = discoveryPending || !hasLoaded
+        discoveryPending = false
         refreshTask = Task {
-            groups = await discovery.discover(ApplicationLocator().discover())
+            if fullDiscovery { groups = await discovery.discover(ApplicationLocator().discover()) }
+            else { groups = await discovery.refreshStatuses(groups) }
             hasLoaded = true
             refreshTask = nil
             render()
+            if discoveryPending { refresh() }
         }
     }
 
@@ -142,8 +205,28 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func render() {
         menu.removeAllItems()
+        let activeConnections = ActiveConnection.observed(in: groups)
+        connectionBadge.isHidden = activeConnections.isEmpty
+        if let button = statusItem?.button {
+            let summary = activeConnections.isEmpty ? "No observed active VPNs"
+                : "Connected: " + activeConnections.map(\.name).joined(separator: ", ")
+            button.toolTip = "VPN Utility — \(summary)"
+            button.setAccessibilityLabel("VPN Utility, \(summary)")
+        }
         if !hasLoaded { label("Finding your VPNs…", in: menu) }
         else if groups.isEmpty { label("No supported VPNs found", in: menu) }
+        if !activeConnections.isEmpty {
+            label("Active VPNs", in: menu)
+            for active in activeConnections {
+                if active.canDisconnect {
+                    addAction("Disconnect \(active.name)", group: active.group, entry: active.entry,
+                              action: .disconnect, to: menu)
+                }
+                addAction(active.group.provider == .system ? "Open VPN Settings for \(active.name)…" : "Open \(active.name)…",
+                          group: active.group, entry: active.entry, action: active.openAction, to: menu)
+            }
+            menu.addItem(.separator())
+        }
         for group in groups {
             let title = NSMenuItem(title: group.provider.title, action: nil, keyEquivalent: "")
             let submenu = NSMenu()
@@ -219,7 +302,7 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.update()
     }
 
-    @objc private func refreshSelected() { refresh() }
+    @objc private func refreshSelected() { refresh(discoverProfiles: true) }
     @objc private func quitSelected() { NSApplication.shared.terminate(nil) }
 
     @objc private func selected(_ sender: NSMenuItem) {
@@ -238,11 +321,13 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         busy.insert(actionKey)
         render()
         Task {
+            var failed = false
             do {
                 try await commands.perform(action, provider: group.provider,
                                            application: group.applicationURL, profileID: entry?.profileID)
                 // Wait for an existing read to finish so pre-action status cannot win the race.
                 if let task = refreshTask { await task.value }
+                discoveryPending = false
                 groups = await discovery.discover(ApplicationLocator().discover())
                 let latestGroup = groups.first { $0.provider == group.provider }
                 let latestStatus = group.provider == .system
@@ -256,10 +341,11 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             } catch {
                 showError(error.localizedDescription, key: actionKey, group: group)
-                refresh()
+                failed = true
             }
             busy.remove(actionKey)
             render()
+            if failed || discoveryPending { refresh() }
         }
     }
 

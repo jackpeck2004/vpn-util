@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 preview
+
+- Add a green menu bar dot for observed connected Tailscale, Cisco, or native VPN sources.
+- Add top-level disconnect and client/settings shortcuts for each active source; Cisco remains client-level.
+- Refresh known statuses every 15 seconds while closed and five seconds while open without enumerating profiles or invoking OpenVPN in the background.
+- Add checks for active-source selection, multiple Cisco profiles, polling scope, and failed reads clearing the indicator.
+
 ## 0.1.1 preview
 
 - Route native L2TP/IPsec connection requests through VPN Settings, preserving system-owned authentication and avoiding credential-free `scutil start` requests. Direct disconnect remains supported.
