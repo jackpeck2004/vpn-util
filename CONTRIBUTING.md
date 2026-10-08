@@ -4,6 +4,7 @@ Build and run checks on macOS with Swift 5.9 or later and Apple's Command Line T
 
 ```sh
 bash scripts/test.sh
+python3 Tests/ReleaseTests/test_release.py -v
 bash scripts/build.sh
 git diff --check
 ```

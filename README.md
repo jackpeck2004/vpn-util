@@ -55,7 +55,27 @@ The twelve portable checks cover parsing, duplicate discovery, missing clients, 
 
 Diagnostics reads real profiles and status and validates the detached menu structure without activating connection actions. **Its output contains private profile names, hostnames, identifiers, and local paths.** It is not saved by the app; redact it before sharing and never commit raw diagnostic output.
 
-The GitHub Actions workflow runs synthetic checks, builds the app, and verifies its signature on a hosted macOS runner. It has read-only repository permissions, uses a pinned checkout action, and never runs real-profile diagnostics. The workflow has not been executed remotely until this repository is published.
+The GitHub Actions workflow runs synthetic checks, seven offline release-script checks, builds the app, and verifies its signature on a hosted macOS runner. Pull-request and branch checks have read-only permissions. Only the tag-triggered release job has repository write permission, with its GitHub token supplied only to the publication step. The pinned checkout action does not retain credentials, and CI never runs real-profile diagnostics. Hosted execution requires publishing the repository first.
+
+## Downloadable GitHub previews
+
+After this source is on GitHub, pushing a version tag such as `v0.1.0` triggers tests and builds a universal Apple Silicon + Intel app. The tag must refer to a commit on `main`, and its numeric version must match `Resources/Info.plist`. The workflow uploads a versioned ZIP and SHA-256 checksum to a GitHub release, then publishes it as a **prerelease**. Find the downloads under the repository's **Releases** page.
+
+```sh
+# After configuring origin and pushing the branches:
+git tag -a v0.1.0 -m "VPN Utility 0.1.0 preview"
+git push origin v0.1.0
+```
+
+The preview pipeline needs no personal access token or signing secrets: it uses GitHub Actions' built-in token. Downloads are ad-hoc signed and not notarized, so normal macOS per-app security approval may be necessary. The pipeline does not advertise them as stable or Gatekeeper-ready builds. Failed uploads leave a draft; reruns can resume drafts but do not replace published downloads.
+
+To produce the same ZIP locally without contacting GitHub:
+
+```sh
+bash scripts/package-release.sh v0.1.0
+```
+
+The result is `dist/VPN-Utility-v0.1.0-universal.zip` and `dist/SHA256SUMS-v0.1.0.txt`. Extract the ZIP, verify the checksum, and move the app to Applications. The universal build compiles both architectures; runtime compatibility across both still needs manual validation.
 
 ## Validation and release limits
 

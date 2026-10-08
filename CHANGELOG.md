@@ -7,5 +7,6 @@
 - Supported direct connection controls with client-owned authentication and explicit client handoffs.
 - Bounded subprocess timeouts, output size, and pipe lifetimes, including commands with background descendants.
 - Synthetic test fixtures, macOS CI configuration, and source-release documentation.
+- Tag-triggered GitHub preview releases with universal app ZIPs, SHA-256 checksums, recoverable draft uploads, and offline publication tests.
 
 Visual menu behavior, actual client handoffs, live connection changes, broader macOS/architecture compatibility, and notarized distribution remain release gates. See [RELEASING.md](RELEASING.md).
