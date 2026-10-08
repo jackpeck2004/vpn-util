@@ -107,6 +107,30 @@ Quit VPN Utility before upgrading or uninstalling it. Removing the utility
 leaves the original VPN clients and their configurations in place. The current
 preview retains its ad-hoc signing and notarization limits.
 
+## First launch: macOS security approval
+
+The current preview is ad-hoc signed and is not notarized by Apple. After
+installing it through Homebrew or downloading the release ZIP, macOS may display
+**“VPN Utility” Not Opened** and say Apple could not verify that it is free of
+malware. A successful bundle signature check verifies integrity; it does not
+establish Apple approval or prove the app is free of malware.
+
+If you trust this build and want to open it:
+
+1. Click **Done** in the warning.
+2. Open **System Settings → Privacy & Security**.
+3. Find the VPN Utility warning and click **Open Anyway**.
+4. Authenticate if prompted, then confirm **Open**.
+
+See [Apple's instructions for safely opening apps](https://support.apple.com/102445).
+This grants an exception for this app. Do not disable Gatekeeper or remove
+quarantine protections globally. If your organization manages these settings,
+its policies may prevent approval.
+
+Removing this warning for public users requires Developer ID signing and Apple
+notarization, using an Apple Developer account. These are not yet part of the
+preview release pipeline.
+
 ## Validation and release limits
 
 Local validation with Apple's Command Line Tools covered all four installed integrations, detached menu construction, app launch, and code signing. The original build measured approximately 0.6 MB on disk and 24–41 MiB of resident memory, with 0% CPU at idle samples and no idle child processes; these measurements are observations, not performance guarantees.
