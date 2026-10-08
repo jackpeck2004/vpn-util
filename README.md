@@ -55,7 +55,7 @@ The twelve portable checks cover parsing, duplicate discovery, missing clients, 
 
 Diagnostics reads real profiles and status and validates the detached menu structure without activating connection actions. **Its output contains private profile names, hostnames, identifiers, and local paths.** It is not saved by the app; redact it before sharing and never commit raw diagnostic output.
 
-The GitHub Actions workflow runs synthetic checks, seven offline release-script checks, builds the app, and verifies its signature on a hosted macOS runner. Pull-request and branch checks have read-only permissions. Only the tag-triggered release job has repository write permission, with its GitHub token supplied only to the publication step. The pinned checkout action does not retain credentials, and CI never runs real-profile diagnostics. Hosted execution requires publishing the repository first.
+The GitHub Actions workflow runs synthetic checks, ten offline release/cask checks, builds the app, and verifies its signature on a hosted macOS runner. Pull-request and branch checks have read-only permissions. Only the tag-triggered release job has repository write permission, with its GitHub token supplied only to the publication step. The pinned checkout action does not retain credentials, and CI never runs real-profile diagnostics. Hosted execution requires publishing the repository first.
 
 ## Downloadable GitHub previews
 
@@ -76,6 +76,36 @@ bash scripts/package-release.sh v0.1.0
 ```
 
 The result is `dist/VPN-Utility-v0.1.0-universal.zip` and `dist/SHA256SUMS-v0.1.0.txt`. Extract the ZIP, verify the checksum, and move the app to Applications. The universal build compiles both architectures; runtime compatibility across both still needs manual validation.
+
+## Install with Homebrew
+
+This source repository can also serve as your own Homebrew tap; a second
+repository is not required. Each automated release includes `vpn-utility.rb`
+with a versioned download URL and the exact ZIP checksum. Commit that file to
+`Casks/` on `main` after publishing the release to activate or update the tap.
+See [the maintainer steps](RELEASING.md#homebrew-distribution).
+
+Replace `OWNER` and `REPOSITORY` with the actual GitHub source repository:
+
+```sh
+brew tap OWNER/vpn-utility https://github.com/OWNER/REPOSITORY.git
+brew install --cask OWNER/vpn-utility/vpn-utility
+open "/Applications/VPN Utility.app"
+```
+
+Installing the released app does not require Swift or Command Line Tools.
+Homebrew handles installing and upgrading the app; it does not start it,
+install VPN clients, configure VPNs, or bypass macOS security approval.
+
+```sh
+brew update
+brew upgrade --cask OWNER/vpn-utility/vpn-utility
+brew uninstall --cask OWNER/vpn-utility/vpn-utility
+```
+
+Quit VPN Utility before upgrading or uninstalling it. Removing the utility
+leaves the original VPN clients and their configurations in place. The current
+preview retains its ad-hoc signing and notarization limits.
 
 ## Validation and release limits
 

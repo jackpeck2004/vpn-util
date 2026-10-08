@@ -1,5 +1,6 @@
 """Offline release tests: fake GitHub CLI, synthetic assets, no publishing."""
 import hashlib
+import importlib.util
 import os
 import plistlib
 from pathlib import Path
@@ -12,6 +13,9 @@ ROOT = Path(__file__).resolve().parents[2]
 TAG = "v0.1.0"
 ARCHIVE = f"VPN-Utility-{TAG}-universal.zip"
 CHECKSUMS = f"SHA256SUMS-{TAG}.txt"
+SPEC = importlib.util.spec_from_file_location("generate_cask", ROOT / "scripts/generate-cask.py")
+CASK = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(CASK)
 
 
 class ReleaseChecks(unittest.TestCase):
@@ -21,7 +25,7 @@ class ReleaseChecks(unittest.TestCase):
         self.root = Path(self.directory.name)
         for directory in ["scripts", "Resources", "dist", "bin"]:
             (self.root / directory).mkdir()
-        for name in ["check-release-tag.sh", "publish-release.sh"]:
+        for name in ["check-release-tag.sh", "publish-release.sh", "generate-cask.py"]:
             shutil.copy2(ROOT / "scripts" / name, self.root / "scripts" / name)
         (self.root / "Resources" / "Info.plist").write_bytes(
             plistlib.dumps({"CFBundleShortVersionString": "0.1.0"}))
@@ -38,6 +42,7 @@ case "$2" in
   view)
     if [[ "$*" == *"--json assets"* ]]; then
       printf '%s\\n' "VPN-Utility-v0.1.0-universal.zip"
+      printf '%s\\n' "vpn-utility.rb"
       if [ "$MOCK_SCENARIO" != "missing" ]; then printf '%s\\n' "SHA256SUMS-v0.1.0.txt"; fi
     elif [ "$MOCK_SCENARIO" = "new" ] && [ ! -f "$MOCK_CREATED" ]; then
       exit 1
@@ -73,6 +78,29 @@ esac
                                         capture_output=True, timeout=5)
                 self.assertEqual(result.returncode == 0, valid)
 
+    def test_cask_has_pinned_download_checksum_and_app(self):
+        content = CASK.render("example/vpn-utility", TAG, self.root / "dist" / ARCHIVE)
+        digest = hashlib.sha256((self.root / "dist" / ARCHIVE).read_bytes()).hexdigest()
+        self.assertIn(f'sha256 "{digest}"', content)
+        self.assertIn('version "0.1.0"', content)
+        self.assertIn('https://github.com/example/vpn-utility/releases/download/v#{version}/', content)
+        self.assertIn('app "VPN Utility.app"', content)
+        self.assertIn('depends_on macos: :ventura', content)
+        self.assertNotIn("no_check", content)
+        self.assertNotIn("system_command", content)
+
+    def test_cask_rejects_repository_and_tag_injection(self):
+        for repository, tag in [('example/#{system("whoami")}', TAG),
+                                ("example/../other", TAG), ("example/..", TAG),
+                                ("example/vpn-utility", 'v0.1.0\"')]:
+            with self.subTest(repository=repository, tag=tag):
+                with self.assertRaises(ValueError):
+                    CASK.render(repository, tag, self.root / "dist" / ARCHIVE)
+
+    def test_cask_rejects_wrong_archive_version(self):
+        with self.assertRaises(ValueError):
+            CASK.render("example/vpn-utility", "v0.2.0", self.root / "dist" / ARCHIVE)
+
     def test_new_release_publishes_only_after_upload(self):
         result, commands = self.publish("new")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -86,6 +114,7 @@ esac
         self.assertIn("--prerelease", commands[publish])
         self.assertIn("--draft=false", commands[publish])
         self.assertIn("--latest=false", commands[publish])
+        self.assertIn("vpn-utility.rb", commands[upload])
 
     def test_existing_draft_resumes(self):
         result, commands = self.publish("draft")

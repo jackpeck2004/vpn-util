@@ -9,4 +9,6 @@
 - Synthetic test fixtures, macOS CI configuration, and source-release documentation.
 - Tag-triggered GitHub preview releases with universal app ZIPs, SHA-256 checksums, recoverable draft uploads, and offline publication tests.
 
+- Generate a checksum-pinned Homebrew cask with every preview release; document using the source repository as a tap.
+
 Visual menu behavior, actual client handoffs, live connection changes, broader macOS/architecture compatibility, and notarized distribution remain release gates. See [RELEASING.md](RELEASING.md).
