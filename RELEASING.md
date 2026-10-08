@@ -73,13 +73,13 @@ installs the universal `.app` from a versioned release URL and verifies SHA-256.
    and push both branches. Users of the tap read `main`, so this commit activates
    the Homebrew version. Never advertise a cask before its download is published.
 3. Give users the `brew tap` and `brew install --cask` commands from README.md,
-   replacing `OWNER` and `REPOSITORY` with your GitHub names. The explicit clone
-   URL allows the source repository to have any name.
+   using the `jackpeck2004/vpn-utility` tap alias and this repository's explicit
+   clone URL (`https://github.com/jackpeck2004/vpn-util.git`).
 
 For a locally packaged release, generate a cask before committing it:
 
 ```sh
-python3 scripts/generate-cask.py OWNER/REPOSITORY v0.1.0 \
+python3 scripts/generate-cask.py jackpeck2004/vpn-util v0.1.0 \
   dist/VPN-Utility-v0.1.0-universal.zip Casks/vpn-utility.rb
 ruby -c Casks/vpn-utility.rb
 ```
@@ -90,11 +90,11 @@ workflow. A cask update is a normal source commit after a release, not a new
 app release/tag. CI does not directly push to your protected default branch.
 
 After pushing, validate the tapped cask with
-`brew info --cask OWNER/vpn-utility/vpn-utility`. Test installation and upgrade on a clean Mac with
+`brew info --cask jackpeck2004/vpn-utility/vpn-utility`. Test installation and upgrade on a clean Mac with
 Homebrew. Check the downloaded bundle, launch, and normal security approval.
 Do not use `--no-quarantine` or add hooks that disable Gatekeeper. The current
 preview is not Developer ID signed or notarized; Homebrew does not change that.
 
 For every subsequent app release, repeat the download/review/commit steps with
 its generated cask. `brew update` then retrieves the new cask, and
-`brew upgrade --cask OWNER/vpn-utility/vpn-utility` installs that version.
+`brew upgrade --cask jackpeck2004/vpn-utility/vpn-utility` installs that version.

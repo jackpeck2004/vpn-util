@@ -85,11 +85,11 @@ with a versioned download URL and the exact ZIP checksum. Commit that file to
 `Casks/` on `main` after publishing the release to activate or update the tap.
 See [the maintainer steps](RELEASING.md#homebrew-distribution).
 
-Replace `OWNER` and `REPOSITORY` with the actual GitHub source repository:
+Once the first release is published and its cask is committed to `Casks/` on `main`, install from this repository:
 
 ```sh
-brew tap OWNER/vpn-utility https://github.com/OWNER/REPOSITORY.git
-brew install --cask OWNER/vpn-utility/vpn-utility
+brew tap jackpeck2004/vpn-utility https://github.com/jackpeck2004/vpn-util.git
+brew install --cask jackpeck2004/vpn-utility/vpn-utility
 open "/Applications/VPN Utility.app"
 ```
 
@@ -99,8 +99,8 @@ install VPN clients, configure VPNs, or bypass macOS security approval.
 
 ```sh
 brew update
-brew upgrade --cask OWNER/vpn-utility/vpn-utility
-brew uninstall --cask OWNER/vpn-utility/vpn-utility
+brew upgrade --cask jackpeck2004/vpn-utility/vpn-utility
+brew uninstall --cask jackpeck2004/vpn-utility/vpn-utility
 ```
 
 Quit VPN Utility before upgrading or uninstalling it. Removing the utility
