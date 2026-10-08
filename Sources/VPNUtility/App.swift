@@ -150,11 +150,18 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             submenu.autoenablesItems = false
             title.submenu = submenu
             menu.addItem(title)
-            if group.provider != .system { label(group.status.title, in: submenu) }
+            if group.provider != .system {
+                let statusTitle: String
+                if group.provider == .tailscale && group.status == .connected { statusTitle = "Connected to tailnet" }
+                else if group.provider == .tailscale && group.status == .disconnected { statusTitle = "Disconnected from tailnet" }
+                else { statusTitle = group.status.title }
+                label(statusTitle, in: submenu)
+            }
             if let issue = group.issue { label(issue, in: submenu) }
             if let error = errors[group.provider.rawValue] { label(error, in: submenu) }
             switch group.provider {
             case .tailscale:
+                label("Status reported by Tailscale", in: submenu)
                 if let entry = group.entries.first {
                     for action in entry.actions where action != .openClient {
                         addAction(action == .connect ? (entry.status == .needsLogin ? "Log In in Tailscale…" : "Connect") : "Disconnect",
@@ -185,7 +192,9 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     if let error = errors[entry.id] { label(error, in: actions) }
                     if busy.contains(entry.id) { label("Working…", in: actions) }
                     for action in entry.actions {
-                        let text = action == .openSettings ? "Open VPN Settings…" : action == .connect ? "Connect" : "Disconnect"
+                        let text = action == .openSettings
+                            ? (entry.status == .disconnected ? "Connect in VPN Settings…" : "Open VPN Settings…")
+                            : "Disconnect"
                         addAction(text, group: group, entry: entry, action: action, to: actions)
                     }
                     submenu.addItem(profile)

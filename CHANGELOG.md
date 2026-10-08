@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased — 0.1.0 preview
+## 0.1.1 preview
+
+- Route native L2TP/IPsec connection requests through VPN Settings, preserving system-owned authentication and avoiding credential-free `scutil start` requests. Direct disconnect remains supported.
+- Clarify that Tailscale status describes the tailnet backend, which can differ from the macOS VPN extension indicator.
+- Add a synthetic regression check that native connect never launches a credential-free command.
+
+## 0.1.0 preview
 
 - Native AppKit menu bar utility with zero third-party runtime dependencies.
 - Automatic discovery of Tailscale, Cisco Secure Client hosts, OpenVPN Connect profiles, and macOS L2TP/IPsec services.

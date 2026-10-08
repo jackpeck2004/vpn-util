@@ -2,7 +2,7 @@
 
 A lightweight, native macOS menu bar utility for VPN clients you already have installed. Launch it to discover existing clients and profiles; no onboarding, configuration, or credential import is required.
 
-**Status:** early source preview, version 0.1.0. The source is MIT licensed. Local builds are ad-hoc signed; a stable, notarized public download is not yet available. See [RELEASING.md](RELEASING.md) for the remaining validation gates.
+**Status:** early source preview, version 0.1.1. The source is MIT licensed. Local builds are ad-hoc signed; a stable, notarized public download is not yet available. See [RELEASING.md](RELEASING.md) for the remaining validation gates.
 
 ## Requirements
 
@@ -30,9 +30,22 @@ You may move the resulting app to Applications. Use its network icon in the menu
 | Tailscale | Bundled CLI reports connection state. | Connect/disconnect directly; login opens Tailscale. |
 | Cisco Secure Client | CLI lists existing hosts and connection state. | Profile actions open Cisco; disconnect applies to its active session. |
 | OpenVPN Connect | CLI lists existing profile names and identifiers. | Opens the original client for profile selection, connection, and disconnection. Status is shown in that client. |
-| macOS L2TP/IPsec | macOS lists existing services and their state. | Starts/stops existing services; Open VPN Settings handles authentication or permissions. |
+| macOS L2TP/IPsec | macOS lists existing services and their state. | Connects through VPN Settings for saved authentication; disconnects directly. |
 
 Cisco and OpenVPN profile entries do **not** automatically select a profile: choose it in the original client after the app opens it. Unsupported commands, missing profiles, corporate restrictions, and unavailable clients fall back to the original app or VPN Settings. Tunnelblick, Viscosity, legacy AnyConnect, and arbitrary VPN extensions are outside the first release.
+
+Native L2TP/IPsec **Connect in VPN Settings…** opens macOS settings, where you
+select your saved VPN and connect. The utility does not read or pass its shared
+secret. Direct `scutil --nc start` proved unreliable with saved authentication
+and could trigger “The IPSec Shared Secret is missing”; version 0.1.1 uses this
+handoff instead. Disconnect remains available directly in the utility.
+
+Tailscale status comes from its bundled CLI's `BackendState`, not the macOS VPN
+switch. macOS can show its network extension as **Connected** while Tailscale
+reports **Stopped** and is disconnected from the tailnet. The utility labels
+these states **Connected to tailnet** and **Disconnected from tailnet**. Check
+Tailscale's own menu for login and connection controls; the macOS switch alone
+is not proof of an active tailnet connection.
 
 Discovery runs on launch and whenever the menu opens. It refreshes every five seconds while the menu stays open; there is no idle polling. The neutral icon does not imply an aggregate connection state. The utility never automatically disconnects another VPN or edits existing client settings.
 
@@ -51,7 +64,7 @@ bash scripts/test.sh
 "dist/VPN Utility.app/Contents/MacOS/VPNUtility" --diagnose
 ```
 
-The twelve portable checks cover parsing, duplicate discovery, missing clients, failure isolation, argument handling, output limits, pipe draining, inherited pipes, and timeout termination. They use synthetic fixtures and never connect/disconnect a VPN. A small executable supplies assertions, so testing does not depend on XCTest or Xcode.
+The thirteen portable checks cover parsing, duplicate discovery, missing clients, failure isolation, argument handling, output limits, pipe draining, inherited pipes, and timeout termination. They use synthetic fixtures and never connect/disconnect a VPN. A small executable supplies assertions, so testing does not depend on XCTest or Xcode.
 
 Diagnostics reads real profiles and status and validates the detached menu structure without activating connection actions. **Its output contains private profile names, hostnames, identifiers, and local paths.** It is not saved by the app; redact it before sharing and never commit raw diagnostic output.
 
@@ -59,12 +72,12 @@ The GitHub Actions workflow runs synthetic checks, ten offline release/cask chec
 
 ## Downloadable GitHub previews
 
-After this source is on GitHub, pushing a version tag such as `v0.1.0` triggers tests and builds a universal Apple Silicon + Intel app. The tag must refer to a commit on `main`, and its numeric version must match `Resources/Info.plist`. The workflow uploads a versioned ZIP and SHA-256 checksum to a GitHub release, then publishes it as a **prerelease**. Find the downloads under the repository's **Releases** page.
+After this source is on GitHub, pushing a version tag such as `v0.1.1` triggers tests and builds a universal Apple Silicon + Intel app. The tag must refer to a commit on `main`, and its numeric version must match `Resources/Info.plist`. The workflow uploads a versioned ZIP and SHA-256 checksum to a GitHub release, then publishes it as a **prerelease**. Find the downloads under the repository's **Releases** page.
 
 ```sh
 # After configuring origin and pushing the branches:
-git tag -a v0.1.0 -m "VPN Utility 0.1.0 preview"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "VPN Utility 0.1.1 preview"
+git push origin v0.1.1
 ```
 
 The preview pipeline needs no personal access token or signing secrets: it uses GitHub Actions' built-in token. Downloads are ad-hoc signed and not notarized, so normal macOS per-app security approval may be necessary. The pipeline does not advertise them as stable or Gatekeeper-ready builds. Failed uploads leave a draft; reruns can resume drafts but do not replace published downloads.
@@ -72,10 +85,10 @@ The preview pipeline needs no personal access token or signing secrets: it uses 
 To produce the same ZIP locally without contacting GitHub:
 
 ```sh
-bash scripts/package-release.sh v0.1.0
+bash scripts/package-release.sh v0.1.1
 ```
 
-The result is `dist/VPN-Utility-v0.1.0-universal.zip` and `dist/SHA256SUMS-v0.1.0.txt`. Extract the ZIP, verify the checksum, and move the app to Applications. The universal build compiles both architectures; runtime compatibility across both still needs manual validation.
+The result is `dist/VPN-Utility-v0.1.1-universal.zip` and `dist/SHA256SUMS-v0.1.1.txt`. Extract the ZIP, verify the checksum, and move the app to Applications. The universal build compiles both architectures; runtime compatibility across both still needs manual validation.
 
 ## Install with Homebrew
 
@@ -135,7 +148,7 @@ preview release pipeline.
 
 Local validation with Apple's Command Line Tools covered all four installed integrations, detached menu construction, app launch, and code signing. The original build measured approximately 0.6 MB on disk and 24–41 MiB of resident memory, with 0% CPU at idle samples and no idle child processes; these measurements are observations, not performance guarantees.
 
-The subprocess pipe fix was reproduced before the change and all twelve checks pass afterward. Visual menu behavior, actual client handoffs, live connection changes, and compatibility across macOS versions/architectures remain manual release gates. Do not infer those checks from successful compilation or the deployment target.
+The subprocess pipe fix was reproduced before the change and all thirteen checks pass afterward. Visual menu behavior, actual client handoffs, live connection changes, and compatibility across macOS versions/architectures remain manual release gates. Do not infer those checks from successful compilation or the deployment target.
 
 For an ordinary consumer download, complete the [release checklist](RELEASING.md), Developer ID signing, notarization, and verification on a clean Mac. The build script deliberately does not publish or notarize anything.
 

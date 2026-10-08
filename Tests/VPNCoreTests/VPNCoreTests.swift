@@ -14,7 +14,7 @@ final class VPNCoreTests {
         expectEqual(entries.count, 2)
         expectEqual(entries[0].name, "Office \"VPN\" $HOME; $(test)")
         expectEqual(entries[0].profileID, "00000000-0000-4000-8000-000000000002")
-        expectEqual(entries[0].actions, [.connect, .openSettings])
+        expectEqual(entries[0].actions, [.openSettings])
         expectEqual(entries[1].actions, [.disconnect, .openSettings])
         expectEqual(try Parsers.systemServices(listing + "\n" + listing).count, 2)
         expectThrows(try Parsers.systemServices("permission denied"))
@@ -66,12 +66,27 @@ final class VPNCoreTests {
     func testCommandArgumentsAreNotShellInterpolated() async throws {
         let runner = MockRunner()
         let profile = "quoted profile ; $(touch /tmp/never-create)"
-        await runner.set(["--nc", "start", profile], result: .success(CommandResult(output: "")))
-        try await VPNCommands(runner: runner).perform(.connect, provider: .system, application: nil, profileID: profile)
+        await runner.set(["--nc", "stop", profile], result: .success(CommandResult(output: "")))
+        try await VPNCommands(runner: runner).perform(.disconnect, provider: .system, application: nil, profileID: profile)
         let call = await runner.calls.last!
         expectEqual(call.executable.path, "/usr/sbin/scutil")
-        expectEqual(call.arguments, ["--nc", "start", profile])
+        expectEqual(call.arguments, ["--nc", "stop", profile])
         expectEqual(call.timeout, 60)
+    }
+
+    func testNativeConnectDoesNotStartWithoutSystemAuthentication() async {
+        let runner = MockRunner()
+        let profile = "00000000-0000-4000-8000-000000000002"
+        await runner.set(["--nc", "start", profile], result: .success(CommandResult(output: "")))
+        do {
+            try await VPNCommands(runner: runner).perform(.connect, provider: .system,
+                                                         application: nil, profileID: profile)
+            fail("Native connect must hand off to VPN Settings")
+        } catch {}
+        let calls = await runner.calls
+        expectTrue(calls.isEmpty)
+        expectEqual(Parsers.systemEntry(id: profile, name: "Office", status: .disconnected).actions, [.openSettings])
+        expectEqual(Parsers.systemEntry(id: profile, name: "Office", status: .connected).actions, [.disconnect, .openSettings])
     }
 
     func testTailscaleUsesCLIEnvironmentAndNoConfigurationFlags() async throws {
@@ -202,6 +217,7 @@ private struct TestMain {
             ("profile parsing and deduplication", { try checks.testProfileParsingAndDeduplication() }),
             ("missing clients and failure isolation", { await checks.testMissingClientsAndFailureIsolation() }),
             ("safe command arguments", { try await checks.testCommandArgumentsAreNotShellInterpolated() }),
+            ("native authentication handoff", { await checks.testNativeConnectDoesNotStartWithoutSystemAuthentication() }),
             ("Tailscale CLI environment", { try await checks.testTailscaleUsesCLIEnvironmentAndNoConfigurationFlags() }),
             ("application alias deduplication", { try checks.testCanonicalPathsDeduplicateAliases() }),
             ("pipe draining", { try await checks.testRealRunnerDrainsLargeOutputWithoutDeadlock() }),

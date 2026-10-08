@@ -72,7 +72,8 @@ public enum Parsers {
     public static func systemEntry(id: String, name: String, status: VPNStatus) -> VPNEntry {
         var actions: [VPNAction] = [.openSettings]
         if status == .connected { actions.insert(.disconnect, at: 0) }
-        if status == .disconnected { actions.insert(.connect, at: 0) }
+        // scutil start supplies authentication overrides even without credentials.
+        // Let macOS use its saved authentication through the original settings UI.
         return VPNEntry(id: "system:\(id)", name: name, profileID: id, status: status, actions: actions)
     }
 

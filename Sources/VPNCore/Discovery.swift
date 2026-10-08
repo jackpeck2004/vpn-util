@@ -124,10 +124,10 @@ public final class VPNCommands {
         case (.cisco, .disconnect):
             executable = VPNDiscovery.ciscoExecutable
             arguments = ["disconnect"]
-        case (.system, .connect), (.system, .disconnect):
+        case (.system, .disconnect):
             guard let profileID else { throw CommandError.failed }
             executable = VPNDiscovery.scutil
-            arguments = ["--nc", action == .connect ? "start" : "stop", profileID]
+            arguments = ["--nc", "stop", profileID]
         default: throw CommandError.failed
         }
         let result = try await runner.run(executable, arguments: arguments, environment: environment, timeout: 60)

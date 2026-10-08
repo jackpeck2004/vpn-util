@@ -1,6 +1,6 @@
 # Release checklist
 
-Source may be published under the MIT license. Version 0.1.0 is an early preview; a stable downloadable binary requires the manual checks below.
+Source may be published under the MIT license. Version 0.1.1 is an early preview; a stable downloadable binary requires the manual checks below.
 
 ## Validate source
 
@@ -31,11 +31,11 @@ Push the repository and its `main` branch to GitHub first. Enable Actions if rep
 3. Create and push an annotated version tag:
 
    ```sh
-   git tag -a v0.1.0 -m "VPN Utility 0.1.0 preview"
-   git push origin v0.1.0
+   git tag -a v0.1.1 -m "VPN Utility 0.1.1 preview"
+   git push origin v0.1.1
    ```
 
-The `macOS CI and releases` workflow runs core and offline publication checks, verifies that the tagged commit belongs to `main` and matches the app version, builds the universal app, checks its ad-hoc signature, and creates a ZIP and checksum. Tags such as `v0.1.0-rc.1` also work when the numeric app version is `0.1.0`.
+The `macOS CI and releases` workflow runs core and offline publication checks, verifies that the tagged commit belongs to `main` and matches the app version, builds the universal app, checks its ad-hoc signature, and creates a ZIP and checksum. Tags such as `v0.1.1-rc.1` also work when the numeric app version is `0.1.1`.
 
 Only the tag release job receives write permission. It creates a draft, uploads the ZIP, checksum, and generated Homebrew cask, checks their presence, and publishes a prerelease that is not marked Latest. An upload failure leaves the draft unpublished; rerun the failed workflow to resume it. A rerun of a published release verifies the download names and skips replacing them; an incomplete published release fails and requires maintainer attention. Per-tag concurrency prevents overlapping runs from racing.
 
@@ -45,7 +45,7 @@ For local packaging and offline script checks:
 
 ```sh
 python3 Tests/ReleaseTests/test_release.py -v
-bash scripts/package-release.sh v0.1.0
+bash scripts/package-release.sh v0.1.1
 ```
 
 ### Stable distribution
@@ -79,8 +79,8 @@ installs the universal `.app` from a versioned release URL and verifies SHA-256.
 For a locally packaged release, generate a cask before committing it:
 
 ```sh
-python3 scripts/generate-cask.py jackpeck2004/vpn-util v0.1.0 \
-  dist/VPN-Utility-v0.1.0-universal.zip Casks/vpn-utility.rb
+python3 scripts/generate-cask.py jackpeck2004/vpn-util v0.1.1 \
+  dist/VPN-Utility-v0.1.1-universal.zip Casks/vpn-utility.rb
 ruby -c Casks/vpn-utility.rb
 ```
 
